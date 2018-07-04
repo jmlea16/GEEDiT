@@ -1,0 +1,1448 @@
+//Google Earth Engine Digitisation Tool (GEEDiT) v1.0
+//Written by James M Lea, University of Liverpool
+//Email: j.lea@liverpool.ac.uk
+
+//Band display information
+  //Image collections used:
+    //USGS Landsat 4 TOA Reflectance (Orthorectified) with Fmask
+    //USGS Landsat 5 TOA Reflectance (Orthorectified) with Fmask
+    //USGS Landsat 7 TOA Reflectance (Orthorectified) with Fmask
+    //USGS Landsat 8 TOA Reflectance (Orthorectified) with Fmask
+    //Sentinel-1 SAR GRD: C-band Synthetic Aperture Radar Ground Range Detected, log scaling
+    //Sentinel-2 MSI: MultiSpectral Instrument, Level-1C
+
+////////////////////////////////////////////////////////////////
+Map.setOptions("SATELLITE");
+Map.setCenter(0,45,2);
+//Welcome menu
+var welcomePanel=ui.Panel({
+    style: {
+    position: 'top-center'
+    }
+  });
+  var welcomePanel1=ui.Panel({
+    style: {
+    position: 'bottom-center'
+    }
+  });
+var welcomeTitle=ui.Label({
+      value: 'GEEDiT - Google Earth Engine Digitisation Tool v1.0',
+      style: {
+        margin: '1px 10px 1px 10px',
+        fontSize: '20px',
+        fontWeight: 'bold'
+        }
+    });
+var welcomeSubtitle=ui.Label({value:'Written by James M. Lea, University of Liverpool',
+      style: {
+        margin: '1px 10px 1px 10px',
+        textAlign: 'center',
+        fontSize: '10px'
+        }});
+var welcomeSubtitle1=ui.Label({value:'Twitter: @JamesMLea, @LivUniGeog',
+      style: {
+        margin: '1px 10px 1px 10px',
+        textAlign: 'center',
+        fontSize: '10px'
+        }});
+var welcomeSubtitle2=ui.Label({value:'For more information visit www.liverpoolGEE.wordpress.com',
+      style: {
+        margin: '1px 10px 10px 10px',
+        textAlign: 'center',
+        fontSize: '10px',
+        fontWeight: 'bold'
+        }});
+var welcomeRef=ui.Label({
+      value: 'If you use this tool for digitisation or exploration of imagery, please cite:',
+      style: {
+        fontWeight: 'bold',
+        textAlign: 'center',
+        fontSize: '8pt',
+        margin: '1pt'
+        }
+    });
+var welcomeRef1=ui.Label({
+      value: ['Lea, JM (2018). Google Earth Engine Digitisation Tool (GEEDiT), and Margin change Quantification Tool (MaQiT) – simple tools for the rapid mapping and quantification of changing Earth surface margins., Earth Surface Dynamics'],
+      style: {
+        textAlign: 'center',
+        fontSize: '8pt',
+        margin: '1pt'
+        }
+    });
+var welcomeNewProject=ui.Button('New Project');
+welcomePanel.add(welcomeTitle);
+welcomePanel.add(welcomeSubtitle);
+welcomePanel.add(welcomeSubtitle1);
+welcomePanel.add(welcomeSubtitle2);
+welcomePanel.add(welcomeNewProject);
+welcomePanel1.add(welcomeRef);
+welcomePanel1.add(welcomeRef1);
+Map.add(welcomePanel);
+Map.add(welcomePanel1);
+
+welcomeNewProject.onClick(function() {
+//Project info panel
+  Map.remove(welcomePanel);
+  var projectInfoPanel=ui.Panel({
+    style: {
+    position: 'top-center'}
+  });
+  var projectNameLabel=ui.Label({
+      value: 'Name of project (suggestion: use underscores _ instead of spaces):',
+      style: {
+        fontWeight: 'bold'
+        }
+    });
+  var projectNameBox=ui.Textbox('Enter project name here');
+  
+  var outputFormatLabel=ui.Label({
+      value: 'Select desired output format:',
+      style: {
+        fontWeight: 'bold'
+        }
+    });
+  var outputFormatLabel1=ui.Label({
+      value: 'NOTE: Earth Engine does not currently support shapefile format, though GeoJSON files can be merged and converted to .shp format using the Merge/Convert tool included in MaQiT).',
+      style: {
+        fontSize: '12px'
+        }
+    });
+  var output_dropdown = {'GeoJSON':['GeoJSON'],'KML': ['KML'],'KMZ': ['KMZ']};
+  var outputFormatBox = ui.Select({
+    items: Object.keys(output_dropdown),
+    onChange: function(key){}
+  });
+  var continueButton=ui.Button('OK');
+  projectInfoPanel.add(projectNameLabel);
+  projectInfoPanel.add(projectNameBox);
+  projectInfoPanel.add(outputFormatLabel);
+  projectInfoPanel.add(outputFormatBox);
+  projectInfoPanel.add(outputFormatLabel1);
+  projectInfoPanel.add(continueButton);
+  
+//Select point of interest
+var LocatorPanel=ui.Panel({
+    style: {
+    position: 'top-center'}
+  });
+var LocatorPanelCont=ui.Panel({
+  style: {
+  position: 'bottom-right'}
+});
+var LocatorLabel=ui.Label('Navigate to location of interest (drag/double click to move/zoom), click once to identify point and press Continue.');
+var LocatorContinue=ui.Button('Continue');
+LocatorPanel.add(LocatorLabel);
+LocatorPanelCont.add(LocatorContinue);
+Map.add(LocatorPanel);
+Map.add(LocatorPanelCont);
+Map.style().set('cursor', 'crosshair');
+
+var location=Map.onClick(function(coords) {
+  var point = ee.Geometry.Point(coords.lon, coords.lat);
+ location=point.getInfo().coordinates;
+  Map.addLayer(point,{color: '#FFFF00',
+    //style: {width: '800px'}
+  });
+});
+
+LocatorContinue.onClick(function() {
+  Map.remove(LocatorPanel);
+  Map.remove(LocatorPanelCont);
+  
+  Map.add(projectInfoPanel);
+  
+});
+
+continueButton.onClick(function(){
+  Map.remove(projectInfoPanel);
+  var glacierName=projectNameBox.getValue();
+  var outputFormat=outputFormatBox.getValue();
+  
+  if (glacierName===undefined){
+    glacierName='Undefined';
+  }
+  
+
+var menu = ui.Panel({
+  style: {
+    position: 'top-center',
+    padding: '8px 15px'
+  }
+});
+
+// Get location point for images
+
+var lat=location[1];
+var lon=location[0];
+
+// text boxes for start/end dates
+var startDateLabel=ui.Label('Start date in YYYY-MM-DD format:');
+var startDateBox=ui.Textbox({
+  placeholder: '1950-01-01 (default)',
+});
+var endDateLabel=ui.Label('End date in YYYY-MM-DD format:');
+var endDateBox=ui.Textbox({
+  placeholder: new Date().toISOString().slice(0,10)
+});
+
+// Dropdown menus for range of months
+var months_dropdown = {
+  January: [1],February: [2],March: [3],April: [4],May: [5],
+  June: [6],July: [7],August: [8],September: [9],October: [10],
+  November: [11],December: [12]
+};
+var months = [
+    'January', 'February', 'March', 'April', 'May',
+    'June', 'July', 'August', 'September',
+    'October', 'November', 'December'
+    ];
+function monthNameToNum(monthname) {
+    var month = months.indexOf(monthname)+1;
+    return month;
+}
+var startMonthLabel=ui.Label('Select start of month range (default: January):');
+var select1 = ui.Select({
+  items: Object.keys(months_dropdown),
+  onChange: function() {
+  }
+});
+var endMonthLabel=ui.Label('Select end of month range (default: December):');
+var select2 = ui.Select({
+  items: Object.keys(months_dropdown),
+  onChange: function() {
+  }
+});
+var cloudinessLabel=ui.Label('Maximum cloudiness of image (%):');
+var cloud_cover=20;
+var cloudinessBox=ui.Textbox({
+  placeholder: '20 (default)',
+  onChange: function(text) {
+    
+    cloud_cover=cloudinessBox.getValue();
+  }
+});
+
+var WriteFreqLabel=ui.Label('Automatically create data export task every n images:');
+var imageNumberWrite=10;
+var WriteFreqBox=ui.Textbox({
+  placeholder: '10 (default)',
+  onChange: function(text) {
+    imageNumberWrite=WriteFreqBox.getValue();
+  }
+});
+
+//Add button as to whether to progress with rest of analysis or not
+var progressButton=ui.Button('OK');
+
+//Create initial menu
+menu.add(startDateLabel);
+menu.add(startDateBox);
+menu.add(endDateLabel);
+menu.add(endDateBox);
+menu.add(startMonthLabel);
+menu.add(select1);
+menu.add(endMonthLabel);
+menu.add(select2);
+menu.add(cloudinessLabel);
+menu.add(cloudinessBox);
+menu.add(WriteFreqLabel);
+menu.add(WriteFreqBox);
+menu.add(progressButton);
+Map.add(menu);
+
+//Gives menu to decide which bands to visualise imagery from.
+var band_comb;
+var band_custom=['B','B','B'];
+var bandMenu = ui.Panel({
+  style: {
+    position: 'top-left',
+    padding: '8px 15px'
+  }
+});
+
+var band_combinations = {
+  Natural: 'Natural',
+  False_colour: 'False colour',
+  Custom: 'Custom'
+};
+
+var band_comb_select = ui.Select({
+  items: Object.keys(band_combinations),
+  onChange: function(key) {
+    band_comb=band_combinations[key];
+  }
+});
+var bandLabel1=ui.Label({
+      value: 'Select band combination for optical satellites:',
+      style: {
+        fontWeight: 'bold',
+        padding: '0'
+        }
+    });
+var bandLabel2=ui.Label({
+      value: 'If Custom band combination, define this below:',
+      style: {
+        fontWeight: 'bold'
+        }
+    });
+var bandLabel3=ui.Label({
+      value: 'NOTE: If using a custom band combination, it is STRONGLY',
+      style: {
+        fontWeight: 'bold',
+        fontSize: '10px'
+        }
+    });
+var bandLabel4=ui.Label({
+      value: 'recommended to analyse data from one satellite at a time',
+      style: {
+        fontWeight: 'bold',
+        fontSize: '10px'
+        }
+    });
+var bandLabel5=ui.Label({
+      value: 'to avoid risk of script errors and data loss.',
+      style: {
+        fontWeight: 'bold',
+        fontSize: '10px'
+        }
+    });
+var bandRedBox=ui.Textbox({placeholder: 'Red band',
+  onChange: function(text) {
+    
+    var bandRed=bandRedBox.getValue();
+    band_custom[0]='B'+bandRed.toString();
+  }
+});
+var bandGreenBox=ui.Textbox({placeholder: 'Green band',
+  onChange: function(text) {
+    
+    var bandGreen=bandGreenBox.getValue();
+    band_custom[1]='B'+bandGreen.toString();
+  }
+});
+var bandBlueBox=ui.Textbox({placeholder: 'Blue band',
+  onChange: function(text) {
+    
+    var bandBlue=bandBlueBox.getValue();
+    band_custom[2]='B'+bandBlue.toString();
+  }
+});
+var pansharp=1;
+var bandPansharpCheckbox=ui.Checkbox('Pansharpen image (Landsat 7/8 only)?',true);
+bandPansharpCheckbox.onChange(function(checked) {
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(pansharp===1){
+    pansharp=0;
+  } else if(pansharp===0){
+    pansharp=1;
+  }
+});
+var bandLabel6=ui.Label({
+      value: 'Gamma correction (optional):',
+      style: {
+        fontWeight: 'bold',
+        padding: '0'
+        }
+    });
+var gamma;
+var bandGamma=ui.Textbox({placeholder: '2.0 (default)',
+  onChange: function(text) {
+    gamma=bandGamma.getValue();
+  }
+});
+
+bandMenu.add(bandLabel1);
+bandMenu.add(band_comb_select);
+bandMenu.add(bandPansharpCheckbox);
+bandMenu.add(bandLabel2);
+bandMenu.add(bandRedBox);
+bandMenu.add(bandGreenBox);
+bandMenu.add(bandBlueBox);
+bandMenu.add(bandLabel3);
+bandMenu.add(bandLabel4);
+bandMenu.add(bandLabel5);
+bandMenu.add(bandLabel6);
+bandMenu.add(bandGamma);
+Map.add(bandMenu);
+
+//Gives menu to decide which satellites to get data from. Default is all
+var satelliteMenu = ui.Panel({
+  style: {
+    position: 'top-right',
+    padding: '8px 15px'
+  }
+});
+var L4check=ui.Checkbox('Landsat 4',true);
+var L5check=ui.Checkbox('Landsat 5',true);
+var L7check=ui.Checkbox('Landsat 7',true);
+var L8check=ui.Checkbox('Landsat 8',true);
+var S1check=ui.Checkbox('Sentinel 1',true);
+var S2check=ui.Checkbox('Sentinel 2',true);
+var L4value=1;
+var L5value=1;
+var L7value=1;
+var L8value=1;
+var S1value=1;
+var S2value=1;
+L4check.onChange(function(checked) {
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L4check.getValue()===false){
+    L4value=0;
+  }else{
+    L4value=1;
+  }
+});
+L5check.onChange(function(checked) {
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L5check.getValue()===false){
+    L5value=0;
+  }else{
+    L5value=1;
+  }
+});
+L7check.onChange(function(checked) {
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L7check.getValue()===false){
+    L7value=0;
+  }else{
+    L7value=1;
+  }
+});
+L8check.onChange(function(checked) {
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L8check.getValue()===false){
+    L8value=0;
+  }else{
+    L8value=1;
+  }
+});
+S1check.onChange(function(checked) {
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(S1check.getValue()===false){
+    S1value=0;
+  }else{
+    S1value=1;
+  }
+});
+S2check.onChange(function(checked) {
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(S2check.getValue()===false){
+    S2value=0;
+  }else{
+    S2value=1;
+  }
+});
+satelliteMenu.add(L4check);
+satelliteMenu.add(L5check);
+satelliteMenu.add(L7check);
+satelliteMenu.add(L8check);
+satelliteMenu.add(S1check);
+satelliteMenu.add(S2check);
+Map.add(satelliteMenu);
+var terminiAll=[];
+
+///////////////////////////////////////////////
+progressButton.onClick(function(){
+  Map.remove(menu);
+  Map.remove(satelliteMenu);
+  var startDate=startDateBox.getValue();
+  var endDate=endDateBox.getValue();
+  
+  if (startDate===undefined){
+    startDate='1950-01-01';
+  }
+  if (endDate===undefined){
+    endDate=new Date().toISOString().slice(0,10);
+  }
+  cloud_cover=parseInt(cloudinessBox.getValue());
+  if (isNaN(cloud_cover)){
+    cloud_cover=20;
+  }
+  
+  var startMonth=monthNameToNum(select1.getValue());
+  var endMonth=monthNameToNum(select2.getValue());
+  if(startMonth===0){
+    startMonth=1;
+  }
+  if(endMonth===0){
+    endMonth=12;
+  }
+  
+  var now = Date.now();
+  var mag=9;
+  var count_lists=[];
+  var collections=[];
+  if(L4value===1){
+  var collection_L4 = ee.ImageCollection('LANDSAT/LT04/C01/T1_TOA')
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry.Point(lon,lat))
+          .filter(ee.Filter.lt('CLOUD_COVER', cloud_cover))
+          .filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+          .sort('DATE_ACQUIRED');
+    count_lists.push(collection_L4.getInfo().features.length);
+    collections.push(collection_L4);
+  }
+  if(L5value===1){
+  var collection_L5 = ee.ImageCollection('LANDSAT/LT05/C01/T1_TOA')
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry.Point(lon,lat))
+          .filter(ee.Filter.lt('CLOUD_COVER', cloud_cover))
+          .filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+          .sort('DATE_ACQUIRED');
+          count_lists.push(collection_L5.getInfo().features.length);
+          collections.push(collection_L5);
+  }
+  if(L7value===1){
+  var collection_L7 = ee.ImageCollection('LANDSAT/LE07/C01/T1_TOA')
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry.Point(lon,lat))
+          .filter(ee.Filter.lt('CLOUD_COVER', cloud_cover))
+          .filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+          .sort('DATE_ACQUIRED');
+          count_lists.push(collection_L7.getInfo().features.length);
+          collections.push(collection_L7);
+  }
+  if(L8value===1){
+  var collection_L8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_TOA')
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry.Point(lon,lat))
+          .filter(ee.Filter.lt('CLOUD_COVER', cloud_cover))
+          .filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+          .sort('DATE_ACQUIRED');
+          count_lists.push(collection_L8.getInfo().features.length);
+          collections.push(collection_L8);
+  }
+  if(S1value===1){
+  var collection_S1 = ee.ImageCollection('COPERNICUS/S1_GRD')
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry.Point(lon,lat))
+          .filter(ee.Filter.calendarRange(startMonth, endMonth, 'month'))
+          //.filter(ee.Filter.eq('transmitterReceiverPolarisation', S1_bands))
+          .filter(ee.Filter.eq('instrumentMode', 'IW'))
+          .sort('orbitProperties_ascendingNodeTime');
+          
+      collection_S1=collection_S1.filter(ee.Filter.eq('resolution_meters', 10));
+      count_lists.push(collection_S1.getInfo().features.length);
+      collections.push(collection_S1);
+  }
+  if(S2value===1){
+  var collection_S2 = ee.ImageCollection('COPERNICUS/S2')
+          .filterDate(startDate, endDate)
+          .filterBounds(ee.Geometry.Point(lon,lat))
+          .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_cover))
+          .filter(ee.Filter.calendarRange(startMonth,endMonth, 'month'))
+          .sort('DATE_ACQUIRED');
+          count_lists.push(collection_S2.getInfo().features.length);
+          collections.push(collection_S2);
+  }
+  
+  //print('count',count_lists);
+  print('Landsat 4',collections[0]);
+  print('Landsat 5',collections[1]);
+  print('Landsat 7',collections[2]);
+  print('Landsat 8',collections[3]);
+  print('Sentinel 1',collections[4]);
+  print('Sentinel 2',collections[5]);
+  
+  if (band_comb===undefined){
+    band_comb='Natural';
+  }
+  var band_combo;
+  function sum(numbers) {
+    return numbers.reduce(function(a,b) {
+      return a + b;
+    });
+  }
+  var totalImages=sum(count_lists);
+  
+  // Throws error message and restarts script if no images found
+  if(sum(count_lists)===0){
+    var warningNoImagePanel = ui.Panel({
+    style: {
+      position: 'top-center',
+      padding: '8px 15px'
+      }
+    });
+    var warningNoImageLabel=ui.Label('No images were found with these search terms. Please refresh the page to start again.');
+    //var warningNoImageButton=ui.Button('Ok');
+    warningNoImagePanel.add(warningNoImageLabel);
+     Map.add(warningNoImagePanel);
+  } else {
+  
+  ///////////////////////////////////////////////////
+    var progress=ui.Button('Continue to next image')
+      progress.onClick(function(){
+          //Map.clear()
+          //copy data to feature collection
+          if(terminus[0].length>=2 || unclearCheckbox.getValue()===true||ImageNotes!==''){
+            
+            if (ImageNotes!==''){
+              if (terminus[0].length<2){
+                terminus[0][0]=[lon,lat];
+                terminus[0][1]=[lon+0.00001,lat+0.00001];
+              }
+            } else {
+              ImageNotes='';
+            }
+            
+            if (unclearCheckbox.getValue()===true){
+              var unclearPresent=1;
+              if (terminus[0].length<2){
+                terminus[0][0]=[lon,lat];
+                terminus[0][1]=[lon+0.00001,lat+0.00001];
+              }
+            }else{
+              unclearPresent=0;
+            }
+            
+            var properties_in={'date': date,'satellite': satellite, 'Name': glacierName,
+              'image_path':image_path, 'unclear':unclearPresent, 'notes': ImageNotes, 'Asc_Desc': ascending_descending
+            };
+            print(properties_in)
+            termini[num_termini]=DataToCollection(terminus[0],date,satellite,glacierName,outputFormat,properties_in,geometryTypeSelect);
+            terminiAll[num_termini1]=termini[num_termini];
+            terminus[0]=[];
+            terminus[1]=0;
+            num_termini=num_termini+1;
+            num_termini1=num_termini1+1;
+          }
+          
+          //Checks if imageNumber is an integer and if it should write data for export
+          var imageNumberInteger=num_termini/imageNumberWrite;
+          if(imageNumberInteger===parseInt(num_termini/imageNumberWrite, 10)){
+            
+            termini=writeDataRegular(termini,glacierName,outputFormat,startDate,date);
+            num_termini=0;
+            termini=[];
+          }
+          
+          if(imageNumber<totalImages){  //proceeds as long as hasn't reached end of dataset, else gives a warning
+            imageNumber=imageNumber+1;
+            
+            unclearPresent=0;
+            i=i+1;
+            if(i===count){
+              g=g+1;
+              coll=collections[g];
+              count=count_lists[g];
+                if (count===0){   //accounts if next image collection is empty
+                  g=g+1;
+                  coll=collections[g];
+                  count=count_lists[g];
+                }
+              i=0;
+            }
+            if(imageNumber<=totalImages) {
+            Map.clear();
+            indicies=showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma);
+            i=indicies[0];
+            g=indicies[1];
+            date=indicies[2];
+            satellite=indicies[3];
+            image_path=indicies[4];
+            image=indicies[5];
+            visParams=indicies[6];
+            ascending_descending=indicies[7];
+            var image_info=indicies[8];
+            legend.clear();
+            legend=addLegend(satellite,date,imageNumber,totalImages,image_info);
+            legend.add(imageCountText);
+            Map.add(legend);
+            Map.add(terminusProgressPanel1);
+            Map.add(terminusProgressPanel2);
+            unclearCheckbox.setValue(false);
+            ImageNotesBox.setValue('');
+            Map.add(unclearPanel);
+            ///////////////////////////////////////////////
+            terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect);
+            }
+          } else {
+            var noLaterImages=ui.Panel({
+              style: {
+              position: 'top-center'}
+            });
+            var noLaterImagesLabel=ui.Label('No later images exist. Remember to click Export Data to save your work.');
+            var noLaterImagesButton=ui.Button('OK');
+            noLaterImages.add(noLaterImagesLabel);
+            noLaterImages.add(noLaterImagesButton);
+            Map.add(noLaterImages);
+            noLaterImagesButton.onClick(function(){
+              Map.remove(noLaterImages);
+            });
+        }
+      });
+    var go_back=ui.Button('Go back to previous image')
+    go_back.onClick(function(){
+            
+            //copy data to feature collection
+            if(terminus[0].length>=2 || unclearCheckbox.getValue()===true||ImageNotes!==''){
+              
+              if (ImageNotes!==''){
+                if (terminus[0].length<2){
+                  terminus[0][0]=[lon,lat];
+                  terminus[0][1]=[lon+0.00001,lat+0.00001];
+                }
+              } else {
+                ImageNotes='';
+              }
+              
+              if (unclearCheckbox.getValue()===true){
+                var unclearPresent=1;
+                if (terminus[0].length<2){
+                  terminus[0][0]=[lon,lat];
+                  terminus[0][1]=[lon+0.00001,lat+0.00001];
+                }
+              }else{
+                unclearPresent=0;
+              }
+              var properties_in={'date': date,'satellite': satellite, 'Name': glacierName,
+                'image_path':image_path, 'unclear':unclearPresent, 'notes': ImageNotes, 'Asc_Desc': ascending_descending
+              };
+              print(properties_in)
+              termini[num_termini]=DataToCollection(terminus[0],date,satellite,glacierName,outputFormat,properties_in,geometryTypeSelect);
+              terminiAll[num_termini1]=termini[num_termini];
+              terminus[0]=[];
+              terminus[1]=0;
+              num_termini=num_termini+1;
+              num_termini1=num_termini1+1;
+            }
+            
+            imageNumber=imageNumber-1;
+            
+            i=i-1;
+            if(i<0 && h[g]===0){
+              g=g-1;
+              coll=collections[g];
+              count=count_lists[g];
+              if (count===0){   //accounts if next image collection is empty
+                    g=g-1;
+                    coll=collections[g];
+                    count=count_lists[g];
+                  }
+              i=count-1;
+            }
+            
+            if (imageNumber<1){
+              imageNumber=1;
+              g=0;
+              i=0;
+              // iterate through image collections until first non-empty
+              // collection is selected
+              while(count_lists[g]===0){
+                g=g+1;
+              }
+              var noEarlierImages=ui.Panel({
+                style: {
+                position: 'top-center'}
+              });
+              var noEarlierImagesLabel=ui.Label('No earlier images exist.');
+              var noEarlierImagesButton=ui.Button('OK');
+              noEarlierImages.add(noEarlierImagesLabel);
+              noEarlierImages.add(noEarlierImagesButton);
+              Map.add(noEarlierImages);
+              noEarlierImagesButton.onClick(function(){
+                Map.remove(noEarlierImages);
+              });
+            } else {
+          
+            Map.clear();
+            indicies=showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma);
+            i=indicies[0];
+            g=indicies[1];
+            date=indicies[2];
+            satellite=indicies[3];
+            image_path=indicies[4];
+            image=indicies[5];
+            visParams=indicies[6];
+            ascending_descending=indicies[7];
+            image_info=indicies[8];
+            legend.clear();
+            legend=addLegend(satellite,date,imageNumber,totalImages,image_info);
+            legend.add(imageCountText);
+            Map.add(legend);
+            Map.add(terminusProgressPanel1);
+              Map.add(terminusProgressPanel2);
+              unclearCheckbox.setValue(false);
+              ImageNotesBox.setValue('');
+              Map.add(unclearPanel);
+              ///////////////////////////////////////////////
+          terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect);
+          }
+          });
+    var finishProject=ui.Button('Export Data');
+    finishProject.onClick(function(){
+          writeData(termini,glacierName,outputFormat,startDate,date);
+        });
+    
+    var terminus_vertex_noOk=ui.Button('Delete last vertex');
+    terminus_vertex_noOk.onClick(function(){
+            var k=terminus[1];
+            k=k-1;
+          if (k>=2){
+            Map.clear();
+            var terminus_dummy=[];
+            var p=-1;
+            while (p<=k-2) {
+              p=p+1;
+              terminus_dummy[p]=terminus[0][p];
+            }
+           
+            terminus[0]=[];
+            terminus[0]=terminus_dummy;
+            terminus[1]=k;
+            
+             legend.clear();
+            legend=addLegend(satellite,date,imageNumber,totalImages,image_info);
+            legend.add(imageCountText);
+            Map.add(legend);
+            Map.add(terminusProgressPanel1);
+            Map.add(terminusProgressPanel2);
+            Map.add(unclearPanel);
+            showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma);
+            Map.addLayer(image,visParams);
+            
+            if(geometryTypeSelect.getValue()==='Polyline'){
+            var terminus_visualisation=ee.Geometry.LineString(terminus[0]);
+            }else if(geometryTypeSelect.getValue()==='Polygon'){
+              terminus_visualisation=ee.Geometry.Polygon(terminus[0]);
+            }
+              Map.addLayer(terminus_visualisation,{color: '#000000',
+                style: {width: '30px'}
+            });
+            var feature_coll=ee.FeatureCollection(termini).filter(ee.Filter.eq('date', date));
+            Map.addLayer(feature_coll,{color: '#BB4FD1',
+                    style: {width: '30px'}
+            });
+            // terminus_vertex_noOk.onClick(function(){
+              
+            // });
+          }else{
+              var warningDelete=ui.Panel({
+                style: {
+                position: 'top-center'}
+              });
+              var warningMessage=ui.Label('Click Re-draw margin');
+              var warningMessageButton=ui.Button('Ok');
+              warningDelete.add(warningMessage);
+              warningDelete.add(warningMessageButton);
+              Map.add(warningDelete);
+              warningMessageButton.onClick(function(){
+                Map.remove(warningDelete);
+              });
+            }
+            if(k<0){  //catch to prevent reference to non-existent index
+              k=0;
+            }
+          
+            terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect);
+          });
+    var terminus_noOk=ui.Button('Re-draw margin');
+    terminus_noOk.onClick(function(){
+            Map.clear();
+             legend.clear();
+            legend=addLegend(satellite,date,imageNumber,totalImages,image_info);
+            legend.add(imageCountText);
+            Map.add(legend);
+            Map.add(terminusProgressPanel1);
+            Map.add(terminusProgressPanel2);
+            Map.add(unclearPanel);
+            terminus[0]=[];
+            terminus[1]=0;
+            showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma);
+            var feature_coll=ee.FeatureCollection(termini).filter(ee.Filter.eq('date', date));
+                Map.addLayer(feature_coll,{color: '#BB4FD1',
+                        style: {width: '30px'}
+                });
+            terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect);
+          });
+    var terminus_draw=ui.Button('Draw another margin');
+    terminus_draw.onClick(function(){
+            Map.clear();
+             legend.clear();
+            legend=addLegend(satellite,date,imageNumber,totalImages,image_info);
+            legend.add(imageCountText);
+            Map.add(legend);
+            Map.add(terminusProgressPanel1);
+            Map.add(terminusProgressPanel2);
+            Map.add(unclearPanel);
+            if(terminus[0].length>=2 || unclearCheckbox.getValue()===true||ImageNotes!==''){
+              
+              if (ImageNotes!==''){
+                if (terminus[0].length<2){
+                  terminus[0][0]=[lon,lat];
+                  terminus[0][1]=[lon+0.00001,lat+0.00001];
+                }
+              } 
+              
+              if (unclearCheckbox.getValue()===true){
+                var unclearPresent=1;
+                if (terminus[0].length<2){
+                  terminus[0][0]=[lon,lat];
+                  terminus[0][1]=[lon+0.00001,lat+0.00001];
+                }
+              }else{
+                unclearPresent=0;
+              }
+              
+              var properties_in={'date': date,'satellite': satellite, 'Name': glacierName,
+                'image_path':image_path, 'unclear':unclearPresent, 'notes': ImageNotes, 'Asc_Desc': ascending_descending
+              };
+              termini[num_termini]=DataToCollection(terminus[0],date,satellite,glacierName,outputFormat,properties_in,geometryTypeSelect);
+              terminiAll[num_termini1]=termini[num_termini];
+              num_termini=num_termini+1;
+              num_termini1=num_termini1+1;
+            }
+            
+            showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma);
+            var feature_coll=ee.FeatureCollection(terminiAll).filter(ee.Filter.eq('date', date));
+              Map.addLayer(feature_coll,{color: '#BB4FD1',
+                      style: {width: '30px'}
+                  });
+            // }
+            terminus[0]=[];
+            terminus[1]=0;
+            terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect);
+          });
+  
+    var ImageNotes='';
+    var ImageNotesBox=ui.Textbox({
+      placeholder: 'Notes on image/margin',
+      onChange: function(text) {
+        ImageNotes=ImageNotesBox.getValue();
+      }
+    });
+    
+    
+    var geometryTypeSelect=ui.Select({
+      items: ['Polyline','Polygon'],
+      placeholder: 'Polyline',
+      });
+      
+    geometryTypeSelect.setValue('Polyline');
+    
+    
+    var terminusProgressPanel1=ui.Panel({
+      style: {
+      position: 'bottom-right'}
+    });
+    var terminusProgressPanel2=ui.Panel({
+      style: {
+      position: 'top-left'}
+    });
+  
+    terminusProgressPanel1.add(progress);
+    terminusProgressPanel1.add(go_back);
+    terminusProgressPanel1.add(finishProject);
+    terminusProgressPanel2.add(terminus_noOk);
+    terminusProgressPanel2.add(terminus_vertex_noOk);
+    terminusProgressPanel2.add(terminus_draw);
+    terminusProgressPanel2.add(ImageNotesBox);
+    terminusProgressPanel2.add(geometryTypeSelect);
+    
+  ///////////////////////////////////////////////
+    var unclearPanel=ui.Panel({
+        style: {
+        position: 'bottom-left'}
+      });
+      
+    var unclearCheckbox=ui.Checkbox('Margin unclear',false);
+    var viewAllMarginsButton=ui.Button('View all margins');
+    viewAllMarginsButton.onClick(function(){
+      Map.addLayer(ee.FeatureCollection(terminiAll),[],'All margins');
+    });
+    var exportCentreline=ui.Button('Export Centreline');
+    exportCentreline.onClick(function(){
+          writeCentreline(terminus[0],glacierName,outputFormat);
+        });
+    unclearPanel.add(exportCentreline);
+    unclearPanel.add(viewAllMarginsButton);
+    unclearPanel.add(unclearCheckbox);
+    var unclear_present=0;
+    unclearCheckbox.onChange(function(checked) {
+    });
+  ///////////////////////////////////////////////////
+  Map.clear();
+  Map.setCenter(lon,lat,mag);
+  
+  //get initial correct indicies of non-empty image ref
+  var g=0;
+  var coll=collections[0];
+  var count=count_lists[0];
+  
+  // iterate through image collections until first non-empty
+  // collection is selected
+  var h=[0,0,0,0,0,0,0];
+  while(count===0){
+    h[g+1]=1;
+    g=g+1;
+    coll=collections[g];
+    count=count_lists[g];
+  }
+  ///////////////////////////////////////////////////
+  Map.setOptions("ROADMAP");
+  var i=0;
+  var terminus=[];
+  terminus[0]=[];
+  terminus[1]=0;
+  
+  var imageNumber=1;
+  var num_termini=0;
+  var num_termini1=0;
+  var termini=[];
+  var indicies=showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma);
+  var legend=addLegend(indicies[3],indicies[2],indicies[0]+1,totalImages,indicies[8]);
+  var imageCountText=ui.Textbox({
+    placeholder: 'Skip to image',
+    style: {width: '100px'
+    }
+  });
+  imageCountText.onChange(function(){
+    //copy data to feature collection
+    if(terminus[0].length>=2 || unclearCheckbox.getValue()===true||ImageNotes!==''){
+      
+      if (ImageNotes!==''){
+        if (terminus[0].length<2){
+          terminus[0][0]=[lon,lat];
+          terminus[0][1]=[lon+0.00001,lat+0.00001];
+        }
+      } else {
+        ImageNotes='';
+      }
+      
+      if (unclearCheckbox.getValue()===true){
+        var unclearPresent=1;
+        if (terminus[0].length<2){
+          terminus[0][0]=[lon,lat];
+          terminus[0][1]=[lon+0.00001,lat+0.00001];
+        }
+      }else{
+        unclearPresent=0;
+      }
+      var properties_in={'date': date,'satellite': satellite, 'Name': glacierName,
+        'image_path':image_path, 'unclear':unclearPresent, 'notes': ImageNotes, 'Asc_Desc': ascending_descending
+      };
+      print(properties_in)
+      termini[num_termini]=DataToCollection(terminus[0],date,satellite,glacierName,outputFormat,properties_in,geometryTypeSelect);
+      terminiAll[num_termini1]=termini[num_termini];
+      terminus[0]=[];
+      terminus[1]=0;
+      num_termini=num_termini+1;
+      num_termini1=num_termini1+1;
+    }
+    if (imageCountText.getValue()>=1&&imageCountText.getValue()<=totalImages){
+      Map.clear();
+      var summed=-1;
+      g=0;
+      i=-1;
+      while (summed!==imageCountText.getValue()-1){
+        if (i===count_lists[g]-1){
+          g=g+1;
+          i=-1;
+        } else {
+          summed=summed+1;
+          i=i+1;
+        }
+      }
+      imageNumber=summed+1;
+      indicies=showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma);
+      
+      
+      i=indicies[0];
+      g=indicies[1];
+       date=indicies[2];
+       satellite=indicies[3];
+       image_path=indicies[4];
+       image=indicies[5];
+       visParams=indicies[6];
+       ascending_descending=indicies[7];
+       image_info=indicies[8];
+       trigger=1;
+      
+      terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect,geometryTypeSelect); 
+      legend.clear();
+      legend=addLegend(satellite,date,imageNumber,totalImages,image_info);
+      legend.add(imageCountText);
+      Map.add(legend);
+      Map.add(terminusProgressPanel1);
+      Map.add(terminusProgressPanel2);
+      Map.add(unclearPanel);
+    }});
+  i=indicies[0];
+  g=indicies[1];
+  var date=indicies[2];
+  var satellite=indicies[3];
+  var image_path=indicies[4];
+  var image=indicies[5];
+  var visParams=indicies[6];
+  var ascending_descending=indicies[7];
+  var image_info=indicies[8];
+  var trigger=1;
+  terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect,geometryTypeSelect); 
+  legend.clear();
+  legend=addLegend(satellite,date,imageNumber,totalImages,image_info);
+  legend.add(imageCountText);
+  Map.add(legend);
+  Map.add(terminusProgressPanel1);
+  Map.add(terminusProgressPanel2);
+  Map.add(unclearPanel);
+  
+  ///////////////////////////////////////////////
+  terminus=drawTerminus(terminus,terminus[1],geometryTypeSelect,geometryTypeSelect);  
+  ///////////////////////////////////////////////////
+  
+  } //end of else
+});// End of progressButton
+});// End of continueButton
+});// End of WelcomeNewProject button
+
+
+////////////////////////////////////////////////////
+///FUNCTIONS
+////////////////////////////////////////////////////
+function drawTerminus(terminus1,k,geometryTypeSelect){
+  if (terminus1===undefined){
+    terminus1[0]=[];
+    terminus1[1]=0;
+    k=0;
+  } else {
+    k=terminus1[1];
+  }
+   var clickAdd=Map.onClick(function(coords) {
+    //Gets coordinates of each point and appends to terminus variable
+    var terminus_visualisation;
+    terminus1[0][k]=[coords.lon, coords.lat];
+    k=k+1;
+    terminus1[1]=k;
+     
+    if(terminus1[0][1]===undefined){
+      terminus_visualisation=ee.Geometry.Point(terminus1[0][0]);
+      Map.addLayer(terminus_visualisation,{color: '#000000',
+      style: {width: '30px'}
+      },'Start point');
+    } else {
+      terminus_visualisation=terminus1[0];
+      if(geometryTypeSelect.getValue()==='Polyline'){
+        var termDraw=ee.Geometry.LineString(terminus_visualisation);
+      }else if(geometryTypeSelect.getValue()==='Polygon'){
+        termDraw=ee.Geometry.Polygon(terminus_visualisation);
+      }
+      if(k>2){
+        Map.remove(Map.layers().get(2))
+      }
+      Map.addLayer(termDraw,{color: '#000000',
+      style: {width: '30px'}
+      },'Margin');
+    }
+  terminus1[1]=k;
+   });
+   return terminus1;
+  }
+  
+ /////////////////////////////////////// 
+function DataToCollection(terminus,date,satellite,projectName,outputFormat,properties_in,geometryTypeSelect){
+    print('format',outputFormat);
+    print('terminus',terminus);
+    print('Date',date);
+    print('satellite',satellite);
+    print('project name',projectName);
+    print('properties',properties_in);
+    print('description',date+['_']+projectName+['_']+satellite);
+    if(geometryTypeSelect.getValue()==='Polyline'){
+    terminus=ee.Geometry.LineString(terminus);
+    }else if(geometryTypeSelect.getValue()==='Polygon'){
+    terminus=ee.Geometry.Polygon(terminus);
+    }
+    terminus=ee.Feature(terminus,properties_in);
+    
+    
+    return terminus;
+  }
+  
+  ////////////////////////////////////////////////////
+  function writeCentreline(centreline,projectName,outputFormat){
+    print(centreline)
+    var terminus=ee.FeatureCollection(ee.Geometry.LineString(centreline));
+    print(terminus)
+    if (outputFormat===null){
+      outputFormat='GeoJSON';
+    }
+    var task=Export.table.toDrive({
+      collection: terminus,
+      description: projectName+['_Centreline'],
+      folder: 'EarthEngine',
+      fileFormat: outputFormat
+      //projection: 'EPSG:4326'
+    });
+  }
+  
+  /////////////////////////////////////////////////////
+  function writeData(termini,projectName,outputFormat,startDate,date){
+    var terminus=ee.FeatureCollection(termini);
+    if (outputFormat===null){
+      outputFormat='GeoJSON';
+    }
+    var task=Export.table.toDrive({
+      collection: terminus,
+      description: projectName+['_']+startDate+['_']+date,
+      folder: 'EarthEngine',
+      fileFormat: outputFormat
+      //projection: 'EPSG:4326'
+    });
+    var downloadDataPanel=ui.Panel({
+      style: {
+      position: 'top-center'}
+    });
+    var downloadLabel=ui.Label('IMPORTANT: YOUR DATA HAVE NOT BEEN DOWNLOADED YET!');
+    var downloadLabel1=ui.Label('DO NOT NAVIGATE AWAY FROM EARTH ENGINE OR RE-RUN THE SCRIPT BEFORE FOLLOWING THE STEPS BELOW!');
+    var downloadLabel2=ui.Label('To find where your data are located navigate to the Tasks tab on the right hand panel where the name of your project should be shown in the format of ProjectName_ImageSearchStartDate_DateOfLatestResult.');
+    var downloadLabel3=ui.Label('You can download your results to a folder on your Google Drive by clicking RUN.');
+    var downloadButton=ui.Button('OK');
+    
+    downloadDataPanel.add(downloadLabel);
+    downloadDataPanel.add(downloadLabel1);
+    downloadDataPanel.add(downloadLabel2);
+    downloadDataPanel.add(downloadLabel3);
+    downloadDataPanel.add(downloadButton);
+    
+    Map.add(downloadDataPanel);
+    downloadButton.onClick(function(){
+      Map.remove(downloadDataPanel);
+    });
+  }
+  
+  /////////////////////////////
+  function writeDataRegular(termini,glacierName,outputFormat,startDate,date){
+    print('termini',termini)
+    if(termini.length>0){
+      var terminus=ee.FeatureCollection(termini);
+      if (outputFormat===null){
+        outputFormat='GeoJSON';
+      }
+      var task=Export.table.toDrive({
+        collection: terminus,
+        description: glacierName+['_']+startDate+['_']+date,
+        folder: 'EarthEngine',
+        fileFormat: outputFormat
+        //Projection: 'EPSG:'
+      });
+      //terminus=[];
+    }
+  }
+  
+  function addLegend(satellite,date,imageNumber,totalImages,image_info){
+    var legend=[];
+        // set position of panel
+        legend = ui.Panel({
+          style: {
+            position: 'top-right',
+            padding: '8px 15px'
+          }
+        });
+        if(satellite==='SENTINEL_1'){
+          var legendTitle = ui.Label({
+            value: satellite+[' (']+image_info.bands[0].id+[')'],
+            style: {
+              fontWeight: 'bold',
+              fontSize: '18px',
+              margin: '0 0 4px 0',
+              padding: '0'
+              }
+          });
+          var legendTitle1 = ui.Label({
+            value: image_info.properties.orbitProperties_pass,
+            style: {
+              fontWeight: 'bold',
+              fontSize: '10px',
+              margin: '0 0 4px 0',
+              padding: '0'
+              }
+          })
+        } else {
+          legendTitle = ui.Label({
+            value: satellite,
+            style: {
+              fontWeight: 'bold',
+              fontSize: '18px',
+              margin: '0 0 4px 0',
+              padding: '0'
+              }
+          });
+        }
+        var dateLabel = ui.Label({
+          value: date,
+          style: {
+            fontSize: '18px',
+            margin: '0 0 4px 0',
+            padding: '0'
+            }
+        });
+        
+        var imageCountLabel=ui.Label('Image: '+imageNumber+'/'+totalImages);
+        
+        // Add the title to the panel
+        legend.add(legendTitle);
+        if(satellite==='SENTINEL_1'){
+          legend.add(legendTitle1);
+        }
+        legend.add(dateLabel);
+        legend.add(imageCountLabel);
+        //legend.add(imageCountText);
+        return legend;
+        //legend.add(imageCountLabel);
+  }
+  
+  /////////////////////////////////////////
+  function showImage(i,g,collections,count_lists,band_comb,imageNumber,totalImages,pansharp,band_custom,gamma) {
+  if (g<=6){
+    var coll=collections[g];
+    var count=count_lists[g];
+    var list=coll.getInfo().features; // gets image coll info
+    var image_info=list[i];
+    var date=image_info.properties.DATE_ACQUIRED;
+    var satellite=image_info.properties.SPACECRAFT_ID;
+    if (image_info.id.substring(11,13)==='S2'||image_info.id.substring(11,13)==='S1'){
+      date=sentinelDateIdentifier(image_info);
+      satellite=sentinelSatelliteIdentifier(image_info);
+    }
+    if(gamma===undefined){
+      gamma=2;
+    }
+    var band_combo=band_choice(satellite,band_comb,band_custom);
+    var landsatGamma=gamma;
+     var landsat8Gamma=gamma;
+    var sentinelGamma=gamma;
+     var image1=ee.Image(image_info.id);
+     if (satellite==='SENTINEL_1'){
+      var visParams= {
+      min: -20,
+      max: 1,
+      bands: image_info.bands[0].id
+      };
+      var image=ee.Image(image_info.id);
+      var asc_desc=image_info.properties.orbitProperties_pass;
+    } else {
+      asc_desc='n/a';
+    }
+    if (satellite==='SENTINEL_2'){
+      visParams= {
+      bands: band_combo,
+      gamma: sentinelGamma,
+      gain: 0.025
+      };
+      image=image1;
+    }
+    if(satellite==='LANDSAT_8'||satellite==='LANDSAT_7'){
+      visParams= {
+      gamma: landsat8Gamma,
+      //gain: 500
+      };
+      if(pansharp===1){
+        var hsv=image1.select(band_combo).rgbToHsv();
+        image = ee.Image.cat([
+          hsv.select('hue'), hsv.select('saturation'), image1.select('B8')
+        ]).hsvToRgb();
+      } else {
+        image=image1;
+      }
+    }
+    if (satellite==='LANDSAT_4'||satellite==='LANDSAT_5'){
+      visParams= {
+      bands: band_combo,
+      gamma: landsatGamma
+      };
+      image=image1;
+    }
+    
+    Map.addLayer(image,visParams);
+    
+    if(i===count){
+      i=-1;
+    }
+    var indicies=[];
+    indicies[0]=i;
+    indicies[1]=g;
+    indicies[2]=date;
+    indicies[3]=satellite;
+    indicies[4]=image_info.id;
+    indicies[5]=image;
+    indicies[6]=visParams;
+    indicies[7]=asc_desc;
+    indicies[8]=image_info;
+    return indicies;
+    //Set up functions to get metadata for Sentinel imagery
+    function sentinelDateIdentifier(sentinel_identifier){
+      if (sentinel_identifier.id.substring(11,13)==='S2'){
+          var s_year=sentinel_identifier.id.substring(14,18);
+          var s_month=String(sentinel_identifier.id.substring(18,20));
+          var s_day=String(sentinel_identifier.id.substring(20,22));
+          if (s_month.length < 2) s_month = '0' + s_month;
+          if (s_day.length < 2) s_day = '0' + s_day;
+          var date=[s_year, s_month, s_day].join('-');
+          
+          return date;
+        }
+      if (sentinel_identifier.id.substring(11,13)==='S1'){
+           s_year=sentinel_identifier.id.substring(35,39);
+           s_month=String(sentinel_identifier.id.substring(39,41));
+           s_day=String(sentinel_identifier.id.substring(41,43));
+          if (s_month.length < 2) s_month = '0' + s_month;
+          if (s_day.length < 2) s_day = '0' + s_day;
+          date=[s_year, s_month, s_day].join('-');
+          
+          return date;
+        }
+    }
+    function sentinelSatelliteIdentifier(sentinel_identifier){
+      if (sentinel_identifier.id.substring(11,13)==='S2'){
+          var satellite='SENTINEL_2';
+          return satellite;
+        }
+      if (sentinel_identifier.id.substring(11,13)==='S1'){
+        satellite='SENTINEL_1';
+        return satellite;
+      }
+    }
+    
+    // Function to select proper natural/false colour band combination
+    function band_choice(satellite,band_comb,band_custom){
+      var natural=['B3', 'B2', 'B1'];
+      var natural_L8=['B4', 'B3', 'B2'];
+      var false_col=['B5', 'B4', 'B3'];
+      var false_col_L8=['B6', 'B5', 'B4'];
+      var false_col_S2=['B8', 'B4', 'B3'];
+      
+      if(band_comb==='Custom'){
+        var band_combo=band_custom;
+      }
+      
+      
+      if (satellite==='LANDSAT_8'){
+        if(band_comb==='Natural'){
+          band_combo=natural_L8;
+        }
+        if (band_comb==='False colour'){
+          band_combo=false_col_L8;
+        }
+      } else {
+        if(band_comb==='Natural'){
+          band_combo=natural;
+        }
+        if (band_comb==='False colour'){
+          band_combo=false_col;
+        }
+      }
+      if (satellite==='SENTINEL_2'){
+        if(band_comb==='Natural'){
+          band_combo=natural_L8;
+        }
+        if (band_comb==='False colour'){
+          band_combo=false_col_S2;
+        }
+      }
+      
+       return band_combo;
+    }
+  }
+  }
+
+
