@@ -1,0 +1,924 @@
+//Google Earth Engine Digitisation Tool (GEEDiT) v2.01 - Tier 2
+//Written by James M Lea, University of Liverpool
+//Email: j.lea@liverpool.ac.uk 
+
+//Band display information
+  //Image collections used:
+    //ASTER L1T radiance  
+    //USGS Landsat 4 TM Collection 1 Tier 2 TOA Reflectance
+    //USGS Landsat 5 TM Collection 1 Tier 2 TOA Reflectance
+    //USGS Landsat 7 Collection 1 Tier 2 and Real-Time data TOA Reflectance
+    //USGS Landsat 8 Collection 1 Tier 2 and Real-Time data TOA Reflectance
+    //Sentinel-1 SAR GRD: C-band Synthetic Aperture Radar Ground Range Detected, log scaling
+    //Sentinel-2 MSI: MultiSpectral Instrument, Level-1C
+    
+
+startup();
+var drawingTools=Map.drawingTools();
+drawingTools.layers().reset()
+drawingTools.clear()
+
+// var glacier=glaciers.first();
+////////////////////////////////////////////////////////////////
+//Add glacier points to map
+function startup(){
+// Map.addLayer(glaciers,{color:'#0000FF'});
+
+////////////////////////////////////////////////////////////////
+Map.setOptions("SATELLITE");
+Map.style().set('cursor', 'crosshair');
+//Welcome menu
+var welcomePanel=ui.Panel({
+    style: {
+    position: 'top-left'
+    }
+  });
+var welcomeTitle=ui.Label({
+      value: 'GEEDiT version 2.01',
+      style: {
+        margin: '1px 10px 1px 10px',
+        fontSize: '20px',
+        fontWeight: 'bold'
+        }
+    });
+var welcomeSubtitle=ui.Label({value:'Written by James M. Lea, University of Liverpool',
+      style: {
+        margin: '1px 10px 1px 10px',
+        textAlign: 'center',
+        fontSize: '12px'
+        }});
+var welcomeSubtitle1=ui.Label({value:'Twitter: @JamesMLea',
+      style: {
+        margin: '1px 10px 1px 10px',
+        textAlign: 'center',
+        fontSize: '12px'
+        }}).setUrl('https://twitter.com/JamesMLea');
+var welcomeSubtitle2=ui.Label({value:'If you use this tool, please cite:',
+      style: {
+        margin: '15px 10px 1px 10px',
+        textAlign: 'center',
+        fontSize: '15px',
+        fontWeight:'bold'
+        }});
+var welcomeSubtitle3=ui.Label({value:'Email: j.lea@liverpool.ac.uk',
+      style: {
+        margin: '1px 10px 1px 10px',
+        textAlign: 'center',
+        fontSize: '12px'
+        }}).setUrl('mailto:j.lea@liverpool.ac.uk');
+var welcomeSubtitle4=ui.Label({value:'Lea, 2018, Earth Surface Dynamics (link)',
+      style: {
+        margin: '1px 10px 1px 10px',
+        textAlign: 'center',
+        fontSize: '12px'
+      }}).setUrl('https://doi.org/10.5194/esurf-6-551-2018');
+
+
+welcomePanel.add(welcomeTitle);
+welcomePanel.add(welcomeSubtitle);
+welcomePanel.add(welcomeSubtitle1).add(welcomeSubtitle3)
+  .add(welcomeSubtitle2).add(welcomeSubtitle4)
+Map.add(welcomePanel);
+
+
+//Welcome Info Panel
+var welcomePanel1=ui.Panel({
+    style: {
+    position: 'bottom-left'
+    }
+  });
+var welcomeTitle1=ui.Label({
+      value: 'Select satellites, date range, and click on map location to visualise imagery.',
+      style: {
+        margin: '1px 10px 1px 10px',
+        fontSize: '15px',
+        fontWeight: 'bold'
+        }
+    });
+welcomePanel1.add(welcomeTitle1);
+Map.add(welcomePanel1);
+
+
+
+////////////////////////////////////////////
+//Gives menu to decide which satellites to get data from. Default is all
+// text boxes for start/end dates
+
+var inputVars=ee.Dictionary.fromLists([
+  'dateStart','dateEnd','monthStart','monthEnd','cloud','exportNum',
+  'ASTERvalue','L4value','L5value','L7value','L8value','S1value','S2value'],
+  ['1950-01-01',new Date().toISOString().slice(0,10),1,12,20,10,
+    1,1,1,1,1,1,1]);
+
+var satelliteMenu = ui.Panel({
+  style: {
+    position: 'top-right',
+    padding: '8px 15px',
+    stretch:'both'
+  }
+});
+Map.add(satelliteMenu);
+var dateLabel=ui.Label({value:'Define start/end dates in YYYY-MM-DD format:',
+        style:{//fontSize: '15px',
+        margin: '1px 10px 1px 1px',
+        fontWeight: 'bold'}});
+var startDateBox=ui.Textbox({
+  placeholder: '1950-01-01 (default)',
+  style:{stretch:'horizontal',margin: '5px 1px 1px 1px'},
+  onChange: function() {
+    inputVars=inputVars.set('dateStart',startDateBox.getValue());
+    // Map.unlisten();
+    // glacierNames(glaciers, inputVars);
+  }
+});
+
+var endDateBox=ui.Textbox({
+  placeholder: new Date().toISOString().slice(0,10),
+  style:{stretch:'horizontal',margin: '5px 1px 1px 1px'},
+  onChange: function() {
+    inputVars=inputVars.set('dateEnd',endDateBox.getValue());
+    // Map.unlisten();
+    // glacierNames(glaciers, inputVars);
+  }
+});
+
+// Dropdown menus for range of months
+var months_dropdown = {
+  January: [1],February: [2],March: [3],April: [4],May: [5],
+  June: [6],July: [7],August: [8],September: [9],October: [10],
+  November: [11],December: [12]
+};
+var months = [
+    'January', 'February', 'March', 'April', 'May',
+    'June', 'July', 'August', 'September',
+    'October', 'November', 'December'
+    ];
+function monthNameToNum(monthname) {
+    var month = months.indexOf(monthname)+1;
+    return month;
+}
+var select1 = ui.Select({
+  placeholder:'Month start',
+  style:{margin: '10px 10px 1px 1px',stretch:'horizontal'},
+  items: Object.keys(months_dropdown),
+  onChange: function() {
+    inputVars=inputVars.set('monthStart',monthNameToNum(select1.getValue()));
+    // Map.unlisten();
+    // glacierNames(glaciers, inputVars);
+  }
+});
+var select2 = ui.Select({
+  placeholder:'Month end',
+  style:{margin: '1px 10px 10px 1px',stretch:'horizontal'},
+  items: Object.keys(months_dropdown),
+  onChange: function() {
+    inputVars=inputVars.set('monthEnd',monthNameToNum(select2.getValue()));
+    // Map.unlisten();
+    // glacierNames(glaciers, inputVars);
+  }
+});
+var cloudinessLabel=ui.Label({value:'Max. cloud cover:',style:{//fontSize: '15px',
+        margin: '1px 10px 1px 1px',
+        fontWeight: 'bold'}})
+var cloudinessBox=ui.Textbox({
+  placeholder: 'Maximum cloudiness of image (20% default):',
+  style:{stretch:'both',
+    margin: '5px 5px 5px 1px'
+  },
+  onChange: function(text) {
+    inputVars=inputVars.set('cloud',cloudinessBox.getValue());
+    // Map.unlisten();
+    // glacierNames(glaciers, inputVars);
+  }
+});
+
+var WriteFreqLabel=ui.Label('Automatically create data export task every n images:',
+        {//fontSize: '15px',
+        margin: '1px 10px 1px 1px',
+        fontWeight: 'bold'});
+var WriteFreqBox=ui.Textbox({
+  placeholder: '10 (default)',
+  style:{margin: '1px 1px 1px 1px'},
+  onChange: function(text) {
+    inputVars=inputVars.set('exportNum',WriteFreqBox.getValue());
+    // Map.unlisten();
+    // glacierNames(glaciers, inputVars);
+  }
+});
+
+
+//Create initial menu
+satelliteMenu.add(dateLabel);
+satelliteMenu.add(startDateBox);
+satelliteMenu.add(endDateBox);
+satelliteMenu.add(select1);
+satelliteMenu.add(select2);
+satelliteMenu.add(cloudinessLabel);
+satelliteMenu.add(cloudinessBox);
+satelliteMenu.add(WriteFreqLabel);
+satelliteMenu.add(WriteFreqBox);
+
+var satelliteLabel=ui.Label('Satellites:',
+        {//fontSize: '15px',
+        margin: '1px 10px 1px 1px',
+        fontWeight: 'bold'});
+
+var ASTERcheck=ui.Checkbox({label:'ASTER',value:true,style:{margin:'5px 1px 1px 1px'}});
+var L4check=ui.Checkbox({label:'Landsat 4',value:true,style:{margin:'5px 1px 1px 1px'}});
+var L5check=ui.Checkbox({label:'Landsat 5',value:true,style:{margin:'5px 1px 1px 1px'}});
+var L7check=ui.Checkbox({label:'Landsat 7',value:true,style:{margin:'5px 1px 1px 1px'}});
+var L8check=ui.Checkbox({label:'Landsat 8',value:true,style:{margin:'5px 1px 1px 1px'}});
+var S1check=ui.Checkbox({label:'Sentinel 1 GRD (not default - use with caution)',value:false,style:{margin:'5px 1px 1px 1px'}});
+var S2check=ui.Checkbox({label:'Sentinel 2',value:true,style:{margin:'5px 1px 1px 1px'}});
+
+
+inputVars.combine(ee.Dictionary.fromLists([
+  'ASTERvalue','L4value','L5value','L7value','L8value','S1value','S2value'],
+  [
+    1,1,1,1,1,1,1]))//.aside(print);
+
+satelliteMenu.add(satelliteLabel);
+satelliteMenu.add(ASTERcheck);
+satelliteMenu.add(L4check);
+satelliteMenu.add(L5check);
+satelliteMenu.add(L7check);
+satelliteMenu.add(L8check);
+satelliteMenu.add(S1check);
+satelliteMenu.add(S2check);
+// Map.add(satelliteMenu);
+var terminiAll=[];
+
+
+var roiPoint=Map.onClick(function(coords) {
+  Map.clear();
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(ASTERcheck.getValue()===false){
+    inputVars=inputVars.set('ASTERvalue',0);
+  }else{
+    inputVars=inputVars.set('ASTERvalue',1);
+  }
+
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L4check.getValue()===false){
+    inputVars=inputVars.set('L4value',0);
+  }else{
+    inputVars=inputVars.set('L4value',1);
+  }
+
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L5check.getValue()===false){
+    inputVars=inputVars.set('L5value',0);
+  }else{
+    inputVars=inputVars.set('L5value',1);
+  }
+
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L7check.getValue()===false){
+    inputVars=inputVars.set('L7value',0);
+  }else{
+    inputVars=inputVars.set('L7value',1);
+  }
+
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(L8check.getValue()===false){
+    inputVars=inputVars.set('L8value',0);
+  }else{
+    inputVars=inputVars.set('L8value',1);
+  }
+
+  if(S1check.getValue()===false){
+    inputVars=inputVars.set('S1value',0);
+  }else{
+    inputVars=inputVars.set('S1value',1);
+  }
+
+  // Shows or hides the first map layer based on the checkbox's value.
+  if(S2check.getValue()===false){
+    inputVars=inputVars.set('S2value',0);
+  }else{
+    inputVars=inputVars.set('S2value',1);
+  }
+  //Identifies glacier by taking point clicked and drawing a circle around it of radius 5 pixels at map scale for a given zoom level
+  var mapScale=ee.Number(Map.getScale());
+  var point = ee.Geometry.Point(coords.lon, coords.lat).buffer(mapScale.multiply(5));
+  Map.setCenter(coords.lon,coords.lat,10);
+  inputVars=inputVars.set('lat',coords.lat);
+  inputVars=inputVars.set('lon',coords.lon);
+  getData(inputVars);
+});
+}
+
+
+function getData(inputVars){
+  var imageryLoadingPanel=ui.Panel({
+        style: {
+        position: 'top-center'
+        }
+  })
+  var imageryLoadingLabel=ui.Label({value:'Imagery Loading. Please wait...'})
+  imageryLoadingPanel.add(imageryLoadingLabel)
+  Map.add(imageryLoadingPanel)
+  
+  var nextStep=function(input){
+    visualiseImagery(input,inputVars);
+  }
+  var imagery=ee.Dictionary();
+  imagery=imagery.combine(ee.Algorithms.If(ee.Number(inputVars.get('L4value')).eq(1),ee.Dictionary(imagery).set('Landsat 4',
+          ee.ImageCollection('LANDSAT/LT04/C01/T2_TOA')
+          .filterDate(inputVars.get('dateStart'), inputVars.get('dateEnd'))
+          .filterBounds(ee.Geometry.Point([inputVars.get('lon'),inputVars.get('lat')]))
+          .filter(ee.Filter.lt('CLOUD_COVER', inputVars.get('cloud')))
+          .filter(ee.Filter.calendarRange(inputVars.get('monthStart'), inputVars.get('monthEnd'), 'month'))
+          .select(['B3','B2','B1'])
+          .sort('system:time_start')
+          )));
+  imagery=imagery.combine(ee.Algorithms.If(ee.Number(inputVars.get('L5value')).eq(1),ee.Dictionary(imagery).set('Landsat 5',
+          ee.ImageCollection('LANDSAT/LT05/C02/T2_TOA')
+          .filterDate(inputVars.get('dateStart'), inputVars.get('dateEnd'))
+          .filterBounds(ee.Geometry.Point([inputVars.get('lon'),inputVars.get('lat')]))
+          .filter(ee.Filter.lt('CLOUD_COVER', inputVars.get('cloud')))
+          .filter(ee.Filter.calendarRange(inputVars.get('monthStart'), inputVars.get('monthEnd'), 'month'))
+          .select(['B3','B2','B1'])
+          .sort('system:time_start')
+          )));
+  imagery=imagery.combine(ee.Algorithms.If(ee.Number(inputVars.get('L7value')).eq(1),ee.Dictionary(imagery).set('Landsat 7',
+          ee.ImageCollection('LANDSAT/LE07/C01/T2_RT_TOA')
+          .filterDate(inputVars.get('dateStart'), inputVars.get('dateEnd'))
+          .filterBounds(ee.Geometry.Point([inputVars.get('lon'),inputVars.get('lat')]))
+          .filter(ee.Filter.lt('CLOUD_COVER', inputVars.get('cloud')))
+          .filter(ee.Filter.calendarRange(inputVars.get('monthStart'), inputVars.get('monthEnd'), 'month'))
+          .sort('system:time_start')
+          )));
+  imagery=imagery.combine(ee.Algorithms.If(ee.Number(inputVars.get('L8value')).eq(1),ee.Dictionary(imagery).set('Landsat 8',
+          ee.ImageCollection('LANDSAT/LC08/C01/T2_RT_TOA')
+          .filterDate(inputVars.get('dateStart'), inputVars.get('dateEnd'))
+          .filterBounds(ee.Geometry.Point([inputVars.get('lon'),inputVars.get('lat')]))
+          .filter(ee.Filter.lt('CLOUD_COVER', inputVars.get('cloud')))
+          .filter(ee.Filter.calendarRange(inputVars.get('monthStart'), inputVars.get('monthEnd'), 'month'))
+          .sort('system:time_start')
+          )));
+  imagery=imagery.combine(ee.Algorithms.If(ee.Number(inputVars.get('ASTERvalue')).eq(1),ee.Dictionary(imagery).set('ASTER',
+          ee.ImageCollection("ASTER/AST_L1T_003")
+          .filterDate(inputVars.get('dateStart'), inputVars.get('dateEnd'))
+          .filterBounds(ee.Geometry.Point([inputVars.get('lon'),inputVars.get('lat')]))
+          .filter(ee.Filter.lt('CLOUDCOVER', inputVars.get('cloud')))
+          .filter(ee.Filter.calendarRange(inputVars.get('monthStart'), inputVars.get('monthEnd'), 'month'))
+          .sort('system:time_start').map(function(im){
+            return im.copyProperties(im).set('SPACECRAFT_ID','ASTER','DATE_ACQUIRED',ee.Date(im.get('system:time_start')).format('yyyy-MM-dd'));
+          })
+          )));
+  imagery=imagery.combine(ee.Algorithms.If(ee.Number(inputVars.get('S1value')).eq(1),ee.Dictionary(imagery).set('Sentinel 1',
+          ee.ImageCollection("COPERNICUS/S1_GRD")
+          .filterDate(inputVars.get('dateStart'), inputVars.get('dateEnd'))
+          .filterBounds(ee.Geometry.Point([inputVars.get('lon'),inputVars.get('lat')]))
+          .filter(ee.Filter.calendarRange(inputVars.get('monthStart'), inputVars.get('monthEnd'), 'month'))
+          .filter(ee.Filter.eq('instrumentMode', 'IW'))
+          .sort('system:time_start').map(function(im){
+            return im.copyProperties(im).set('SPACECRAFT_ID','SENTINEL_1','DATE_ACQUIRED',ee.Date(im.get('system:time_start')).format('yyyy-MM-dd'));
+          })
+          )));
+  imagery=imagery.combine(ee.Algorithms.If(ee.Number(inputVars.get('S2value')).eq(1),ee.Dictionary(imagery).set('Sentinel 2',
+          ee.ImageCollection('COPERNICUS/S2')
+          .filterDate(inputVars.get('dateStart'), inputVars.get('dateEnd'))
+          .filterBounds(ee.Geometry.Point([inputVars.get('lon'),inputVars.get('lat')]))
+          .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', inputVars.get('cloud')))
+          .filter(ee.Filter.calendarRange(inputVars.get('monthStart'), inputVars.get('monthEnd'), 'month'))
+          .sort('system:time_start').map(function(im){
+            return im.copyProperties(im).set('SPACECRAFT_ID','SENTINEL_2','DATE_ACQUIRED',ee.Date(im.get('system:time_start')).format('yyyy-MM-dd'));
+          })
+          )));
+          
+  var imageColl=ee.ImageCollection(ee.List(ee.Dictionary(imagery).values()).map(function(imColl){
+    return ee.ImageCollection(imColl).map(function(im){
+      return ee.Image(im).set('time',ee.Date(ee.Image(im).get('system:time_start')).format('HH:mm:ss'))
+    }).toList(5000);
+  }).flatten()).sort('system:time_start',true).evaluate(nextStep);
+  
+}
+
+function visualiseImagery(imageColl,inputVars){
+  Map.clear();
+  Map.unlisten();
+  Map.setOptions('ROADMAP');
+  var previousMargins=ui.data.ActiveList();
+  var previousMarginsList=ee.FeatureCollection([]);
+  var image1=ee.Image([]);
+  var visPanel=ui.Panel({
+        style: {
+        position: 'top-right'
+        }
+      });
+  Map.add(visPanel);
+  
+  
+  //pulls glacier name info from server to ensure that it is at the top of the panel
+  var collection= imageColl.features;
+  //gets number of images in imColls
+  var numImages=collection.length;
+  
+  // print(collection);
+  var firstImage=collection[0];
+  // print(firstImage);
+  var imVisParams={
+      LANDSAT_4:{bands:['B3','B2','B1'],gamma:1.5,min:0,max:0.8},
+      LANDSAT_5:{bands:['B3','B2','B1'],gamma:1.5,min:0,max:0.8},
+      LANDSAT_7:{bands:['B3','B2','B1'],gamma:1.5,min:0,max:0.8},
+      LANDSAT_8:{bands:['B4','B3','B2'],gamma:1.5,min:0,max:0.8},
+      SENTINEL_1:{bands:'HH',min:-25,max:0},
+      SENTINEL_2:{bands:['B4','B3','B2'],gamma:1.5,min:0,max:8000},
+      ASTER:{bands:['B3N','B02','B01'],min:0,max:200,gamma:1.5}
+  };
+  
+  var satPanelInputs={
+    imNum:1,                            //image number
+    totImages:numImages,    //total number of images
+    imDateLabel:'Skip to closest image date:',   //image date label
+    imDateText:firstImage.properties.DATE_ACQUIRED,  //image date text
+    imNumLabel:['Image number of '+numImages.toString()+' images'],   //image number label
+    imNumText:1,                                                                 //image number text
+    imSatellite:firstImage.properties.SPACECRAFT_ID     //image satellite
+  };
+
+    var imNum=satPanelInputs.imNumText;
+    var imNumText=ui.Textbox({value:imNum.toString(),style:{margin: '5px 1px 1px 1px',stretch:'horizontal'}});
+    var imDateText=ui.Textbox({value:satPanelInputs.imDateTex,style:{margin: '5px 1px 1px 1px',stretch:'horizontal'}});
+    var imSatellite=ui.Label({value:satPanelInputs.imSatellite,style:{fontWeight:'bold',margin: '5px 1px 1px 1px'}});
+    
+     visPanel.add(imSatellite);
+      visPanel.add(ui.Label({value:satPanelInputs.imDateLabel,style:{margin: '5px 1px 1px 1px'}}));
+      visPanel.add(imDateText);
+      visPanel.add(ui.Label({value:satPanelInputs.imNumLabel,style:{margin: '5px 1px 1px 1px'}}));
+      visPanel.add(imNumText);
+
+  
+  var imChangePanel=ui.Panel({
+        style: {
+        position: 'bottom-right'
+        }
+      });
+  var warningPanel=ui.Panel({
+    style: {
+    position: 'top-center'
+    }
+  });
+  var warning=ui.Label('No more images');
+  var warningOK=ui.Button('Ok');
+  warningOK.onClick(function(){
+    Map.remove(warningPanel);
+  });
+  warningPanel.add(warning);
+  warningPanel.add(warningOK);
+  var margin=null;
+  var layerName;
+  var forwardButton=ui.Button({label:'Next image',style:{margin: '5px 1px 1px 1px',
+                                          stretch:'horizontal'}
+                              });
+  forwardButton.onClick(function(){
+    editButton.setDisabled(false);
+    newLineButton.setDisabled(true);
+    if(margin!==null){
+      previousMarginsList=ee.FeatureCollection(previousMarginsList)
+                              .merge(ee.FeatureCollection(getMarginInfo(margin, inputVars, image1)))//.aside(print);
+    }
+      imNum=Number(imNumText.getValue())+1;
+      imNumText.setValue(imNum.toString(),false);
+      margin=null
+      if (imNum<=numImages){
+        image1=showImage(collection,imNumText,imDateText,imSatellite,1,1);
+      } else {
+        imNum=imNum-1;
+        imNumText.setValue(imNum.toString(),false);
+        Map.add(warningPanel)
+      }
+      // });
+    });
+    
+  var backButton=ui.Button({label:'Previous image',style:{margin: '5px 1px 1px 1px',
+                                          stretch:'horizontal'}});
+  backButton.onClick(function(){
+    editButton.setDisabled(false)
+    newLineButton.setDisabled(true)
+     if(margin!==null){
+      previousMarginsList=ee.FeatureCollection(previousMarginsList)
+                              .merge(ee.FeatureCollection(getMarginInfo(margin, inputVars, image1)))//.aside(print)
+    }
+      imNum=Number(imNumText.getValue())-1;
+      imNumText.setValue(imNum.toString(),false);
+      margin=null
+      if (imNum>0){
+        image1=showImage(collection,imNumText,imDateText,imSatellite,1,-1);
+      } else {
+        imNum=1;
+        imNumText.setValue(imNum.toString(),false);
+        Map.add(warningPanel)
+      }
+    });
+  // var resetButton=ui.Button('Reset Map');
+  // resetButton.onClick(function(){
+  //     Map.clear();
+  //     Map.unlisten();
+  //     visualiseImagery(imageColl,inputVars);
+  //   });
+    
+  var exportButton=ui.Button({label:'Export GeoJSON',style:{margin: '5px 1px 1px 1px',
+                                          stretch:'horizontal'}});
+  exportButton.onClick(function(){
+    // print('hello')
+    if(margin!==null){
+      previousMarginsList=ee.FeatureCollection(previousMarginsList)
+                              .merge(ee.FeatureCollection(getMarginInfo(margin, inputVars, image1)))//.aside(print)
+    }
+    // print('hello1')
+    Export.table.toDrive({
+      collection:ee.FeatureCollection(previousMarginsList),
+      description:'GEEDiT_export',
+      fileFormat:'GeoJSON'
+    })
+  })
+    
+  imDateText.onChange(function(){
+      if(margin!==null){
+      previousMarginsList=ee.FeatureCollection(previousMarginsList)
+                              .merge(ee.FeatureCollection(getMarginInfo(margin, inputVars, image1)))//.aside(print)
+    }
+      margin=null;
+       // Map.unlisten(DM1)
+      image1=showImage(collection,imNumText,imDateText,imSatellite,0,0);
+      // drawMargins(drawingTools,im1,inputVars)
+    });
+  imNumText.onChange(function(){
+    if(margin!==null){
+      previousMarginsList=ee.FeatureCollection(previousMarginsList)
+                              .merge(ee.FeatureCollection(getMarginInfo(margin, inputVars, image1)))//.aside(print)
+    }
+      margin=null;
+      // Map.unlisten(DM1)
+    image1=showImage(collection,imNumText,imDateText,imSatellite,1,0);
+    // drawMargins(drawingTools,im2,inputVars)
+  });
+  
+  imChangePanel.add(forwardButton);
+  imChangePanel.add(backButton);
+  // imChangePanel.add(resetButton);
+  imChangePanel.add(exportButton);
+  Map.add(imChangePanel);
+  
+  var qualFlagPanel=ui.Panel({
+        style: {
+        position: 'bottom-left'
+        }
+      });
+  var qualFlagLabel=ui.Label({value:'Image quality flag options:',
+                              style:{fontWeight:'bold',margin: '5px 1px 1px 1px'}});
+  var cloudShadowFlag=ui.Checkbox({label:'Cloud/shadow affected',value:false,style:{margin: '5px 1px 1px 1px'}});
+  var otherImageFlag=ui.Checkbox({label:'Margin checked against different image',value:false,style:{margin: '5px 1px 1px 1px'}});
+  var SLCFlag=ui.Checkbox({label:'SLC failure affected (Landsat 7 only)',value:false,style:{margin: '5px 1px 1px 1px'}});
+  var partialPickFlag=ui.Checkbox({label:'Only part of margin digitised',value:false,style:{margin: '5px 1px 1px 1px'}});
+  var notes=ui.Textbox({placeholder:'User notes on margin',style:{margin: '5px 1px 1px 1px',stretch:'horizontal'}});
+  qualFlagPanel.add(qualFlagLabel);
+  qualFlagPanel.add(cloudShadowFlag);
+  qualFlagPanel.add(otherImageFlag);
+  qualFlagPanel.add(SLCFlag);
+  qualFlagPanel.add(partialPickFlag);
+  qualFlagPanel.add(notes);
+  Map.add(qualFlagPanel);
+  
+  var extraImagePanel=ui.Panel({
+        style: {
+        position: 'top-left'
+        }
+      });
+  var extraImageLabel=ui.Label({
+        value:'Add image for comparison:',
+        style: {
+          margin: '5px 1px 1px 1px',
+          fontWeight: 'bold',
+          textAlign:'center',
+          stretch:'both'
+         }
+  });
+  var extraImageLabel1=ui.Label({
+        value:'Timestamp in YYYY_MM_DD_HHmm',
+        style: {
+          margin: '5px 1px 1px 1px',
+          textAlign:'center',
+          stretch:'both',
+          fontSize:'12px'
+          //fontWeight: 'bold'
+         }
+  });
+  var extraImageButtonNext=ui.Button({style: {
+                                          margin: '5px 1px 1px 1px',
+                                          stretch:'horizontal'
+                                         }});
+  var extraImageButtonPrev=ui.Button({style: {
+                                          margin: '5px 1px 1px 1px',
+                                          stretch:'horizontal'
+                                         }});
+  var extraImageButtonRemove=ui.Button({label:'Remove added images',
+                                        style: {
+                                          margin: '5px 1px 1px 1px',
+                                          stretch:'horizontal'
+                                         }
+                                        });
+  var editButton=ui.Button({label:'Edit (click on margin)',disabled:false,style:{stretch:'horizontal',margin: '5px 1px 1px 1px',}});
+  var newLineButton=ui.Button({label:'Draw new line',disabled:true,style:{stretch:'horizontal',margin: '5px 1px 1px 1px',}});
+  
+                                         
+  extraImagePanel.add(extraImageLabel).add(extraImageLabel1);
+  extraImagePanel.add(extraImageButtonNext);
+  extraImagePanel.add(extraImageButtonPrev);
+  extraImagePanel.add(extraImageButtonRemove);
+  extraImagePanel.add(editButton)//.add(newLineButton)
+  Map.add(extraImagePanel)
+  
+  image1=showImage(collection,imNumText,imDateText,imSatellite,1,0);
+  
+  function showImage(collection, imNumText, imDateText, imSatellite, dateNumFlag,addNumFlag){
+    var imWarningPanel=ui.Panel({
+        style: {
+        position: 'top-center'
+        }
+      });
+    var imWarningLabel=ui.Label('Invalid image number. Please re-enter.')
+    var imWarningButton=ui.Button({label:'OK',style:{stretch:'horizontal'}})
+    imWarningPanel.add(imWarningLabel).add(imWarningButton)
+    imWarningButton.onClick(function(){
+      Map.remove(imWarningPanel)
+    })
+    // print(imNumText.getValue())
+    // print(imDateText.getValue())
+    // Map.unlisten()
+    // ui.data.ActiveList().reset()
+    // print(collection);
+    // print(previousMargins)
+    // drawingTools.setShape('line');
+    extraImageButtonPrev.unlisten();
+    extraImageButtonNext.unlisten();
+    extraImageButtonRemove.unlisten();
+    while (Map.layers().length()>0){
+              Map.remove(Map.layers().get(0));
+            }
+            
+    var imNum1=Number(imNumText.getValue())-1;
+    var imNext=collection[imNum1+1];
+    var imPrev=collection[imNum1-1];
+    print(imNum1)
+    if (imNum1>=0 && imNum1<numImages){
+    
+       var imDate=imDateText.getValue();//.aside(print);
+        
+       if (dateNumFlag===1){
+         imNum=Number(imNumText.getValue())-1;
+         var image=collection[imNum];
+       } else {
+       var date1=ee.Date.parse('yyyy-MM-dd',imDateText.getValue()).millis().getInfo();
+       var dateDist=[];
+       for (var i=0; i<collection.length; i++){
+         dateDist[i]=Math.abs(date1-collection[i].properties['system:time_start']);
+       }
+        // print(dateDist);
+         imNum=indexOfSmallest(dateDist);
+         image=collection[imNum];
+       }
+       
+        while (Map.layers().length()>0){
+                Map.remove(Map.layers().get(0));
+              }
+        // print(image);
+         
+    
+    
+    
+      if (image.properties.SPACECRAFT_ID==='SENTINEL_1'){
+        var image1=ee.Image(image.id);
+        // print(ee.List(ee.Image(image1).bandNames()));
+        Map.addLayer(image1,{bands:ee.List(ee.Image(image1).bandNames()).getInfo()[0],min:-25,max:0},imDate);
+      } else {
+        Map.addLayer(ee.Image(image.id),imVisParams[image.properties.SPACECRAFT_ID],imDate);
+      }
+      if (imNum1+1<numImages){
+        var imNextDate=ee.Date(imNext.properties['system:time_start']).format('yyyy_MM_dd_HHmm').getInfo();
+        extraImageButtonNext.setLabel('Image:'+imNextDate)
+        extraImageButtonNext.setDisabled(false)
+        extraImageButtonNext.onClick(function(){
+          if (imNext.properties.SPACECRAFT_ID==='SENTINEL_1'){
+            var image2=ee.Image(imNext.id);
+            // print(ee.List(ee.Image(image1).bandNames()));
+            Map.addLayer(image2,{bands:ee.List(ee.Image(image2).bandNames()).getInfo()[0],min:-25,max:0},imNextDate);
+          } else {
+            Map.addLayer(ee.Image(imNext.id),imVisParams[imNext.properties.SPACECRAFT_ID],imNextDate);
+          }
+          otherImageFlag.setValue(true);
+        })
+        
+      } else {
+        extraImageButtonNext.setLabel('No image')
+        extraImageButtonNext.setDisabled(true)
+        extraImageButtonNext.onClick(function(){})
+      }
+      if (imNum1>0){
+        var imPrevDate=ee.Date(imPrev.properties['system:time_start']).format('yyyy_MM_dd_HHmm').getInfo();
+        extraImageButtonPrev.setLabel('Image:'+imPrevDate)
+        extraImageButtonPrev.setDisabled(false)
+        extraImageButtonPrev.onClick(function(){
+          if (imPrev.properties.SPACECRAFT_ID==='SENTINEL_1'){
+            var image3=ee.Image(imPrev.id);
+            // print(ee.List(ee.Image(image1).bandNames()));
+            Map.addLayer(image3,{bands:ee.List(ee.Image(image3).bandNames()).getInfo()[0],min:-25,max:0},imPrevDate);
+          } else {
+            Map.addLayer(ee.Image(imPrev.id),imVisParams[imPrev.properties.SPACECRAFT_ID],imPrevDate);
+          }
+          otherImageFlag.setValue(true);
+        })
+      } else {
+        extraImageButtonPrev.setLabel('No image')
+        extraImageButtonPrev.setDisabled(true)
+        extraImageButtonPrev.onClick(function(){})
+      }
+      
+      extraImageButtonRemove.onClick(function(){
+        while (Map.layers().length()>1){
+              Map.remove(Map.layers().get(1));
+            }
+      })
+    
+    
+      var DM1=drawMargins(drawingTools,image,inputVars)
+      
+      imDateText.setValue(image.properties.DATE_ACQUIRED,false);
+      imNumText.setValue((imNum+1).toString(),false);
+      imSatellite.setValue(image.properties.SPACECRAFT_ID);
+    } else {
+      Map.add(imWarningPanel)
+    }
+    
+    
+    function drawMargins(drawingTools,image,glacierInfo){
+      // print(glacierInfo)
+      drawingTools.unlisten()
+      var i=0;
+      drawingTools.layers().forEach(function(layer){
+        previousMargins.add(layer);
+      });
+      
+      var timestamp=ee.Date(image.properties['system:time_start']).format('yyyy_MM_dd_HHmm')
+      partialPickFlag.setValue(false)
+      cloudShadowFlag.setValue(false);
+      otherImageFlag.setValue(false);
+      if(image.properties['system:time_start'] > 1054339200000 &&
+        image.properties.SPACECRAFT_ID==='LANDSAT_7'){
+          SLCFlag.setValue(true);
+      } else {
+        SLCFlag.setValue(false);
+      }
+      notes.setValue('');
+      
+      layerName=ee.String('t_').cat(timestamp).getInfo();
+      if(drawingTools.layers().length()>0){
+        drawingTools.layers().get(drawingTools.layers().length()-1).set({shown:false,
+                                                                        //locked:true,
+                                                                        color:'blue'
+        })
+        drawingTools.layers().set(drawingTools.layers().length(),ui.Map.GeometryLayer({
+          name:layerName,
+          color:'black',
+          shown:true
+        }))
+        
+        drawingTools.setSelected(drawingTools.layers().get(drawingTools.layers().length()-1))
+        
+        
+        
+        drawingTools.draw()
+        
+        
+        drawingTools.onDraw(function(){
+          margin=ee.Feature(drawingTools.getSelected().toGeometry())//.aside(print)
+        })
+        drawingTools.onEdit(function(){
+          margin=ee.Feature(drawingTools.getSelected().toGeometry())//.aside(print)
+        })
+        drawingTools.onErase(function(){
+          margin=null;
+        })
+      } else {
+        drawingTools.setDrawModes(['line','polygon']);
+        drawingTools.setShape('line')
+        drawingTools.layers().get(0).set('name',layerName).setColor('black')
+        drawingTools.onDraw(function(){
+          margin=ee.Feature(drawingTools.getSelected().toGeometry())//.aside(print)
+        })
+        drawingTools.onEdit(function(){
+          margin=ee.Feature(drawingTools.getSelected().toGeometry())//.aside(print)
+        })
+        drawingTools.onErase(function(){
+          margin=null;
+        })
+      }
+      
+      editButton.onClick(function(){
+        Map.style().set('cursor', 'hand');
+        drawingTools.stop()
+        newLineButton.setDisabled(false)
+        editButton.setDisabled(true)
+      })
+      newLineButton.onClick(function(){
+        Map.style().set('cursor', 'crosshair');
+        drawingTools.draw()
+        newLineButton.setDisabled(true)
+        editButton.setDisabled(false)
+      })
+      // i=i+1;
+      // var previousLayers=drawingTools;
+      
+      // drawingTools.onLayerAdd(function(){
+      //   i=i+1;
+      //   drawingTools.layers().get(drawingTools.layers().length()-1).set('color','000000');
+      //   drawingTools.layers().get(drawingTools.layers().length()-1).set('name','Date_'+image.properties.DATE_ACQUIRED.replace(/-/g, " ")+'_'+i);
+      // });
+      return drawingTools
+    } //end of drawMargins function
+    return image
+  }   //end of showImage function
+  function singleMargin(layer){
+    var marginLengthOut=ee.Number(ee.Feature(layer).length(10));
+    var verticesOut=ee.Number(ee.List(ee.Feature(layer).geometry().coordinates()).length());
+    return ee.Feature(layer).set('marginLength',marginLengthOut,
+                                  'numVertices',verticesOut,
+                                  'distPerVertex',marginLengthOut.divide(verticesOut))
+  }
+  function multiMargin(layer){
+    var listCoords=ee.List(ee.Feature(layer).geometry().coordinates()) //gets coords list of each component of multifeature
+    var geomType=ee.Feature(layer).geometry().type()
+    var listFeatures=ee.List(listCoords).map(function(coords){
+      var marginLengthOut=ee.Number(ee.Geometry.LineString(coords).length(10));
+      var verticesOut=ee.Number(ee.List(coords).length());
+      var featureOut=ee.Feature(ee.Geometry.LineString(coords))
+      return ee.Feature(featureOut).set('marginLength',marginLengthOut,
+                                        'numVertices',verticesOut,
+                                        'distPerVertex',marginLengthOut.divide(verticesOut))
+    })
+    // var marginLengthOut=ee.Number(ee.Geometry.LineString(layer).length(10));
+    // var verticesOut=ee.Number(ee.List(ee.Feature(layer).geometry().coordinates()).length());
+    return ee.FeatureCollection(listFeatures)//.set('marginLength',marginLengthOut,
+                                  //'numVertices',verticesOut,
+                                 // '//distPerVertex',marginLengthOut.divide(verticesOut))
+  }
+  function getMarginInfo(margin, inputVars, image1){
+    // print(inputVars)
+    // print(image1.properties.SPACECRAFT_ID)
+    // print('hello',drawingTools.toFeatureCollection())
+    // if (ee.Feature(layer).geometry().type()==='LineString' || ee.Feature(layer).geometry().type()==='Polygon'){
+    //   print('hellooooo')
+    // } else if (ee.Feature(layer).geometry().type()==='MultiLineString' || ee.Feature(layer).geometry().type()==='MultiPolygon'){
+    //   print('')
+    // }
+    var marginsList=ee.FeatureCollection(ee.Feature(margin))//.aside(print);
+    
+   return ee.FeatureCollection(marginsList).map(function(layer){
+    // var marginLength=ee.Number(ee.Feature(layer).length(10));
+    // var vertices=ee.Number(ee.List(ee.Feature(layer).geometry().coordinates()).length());
+    // var geomType=ee.Number(ee.String(ee.Feature(layer).geometry().type()).compareTo('LineString'))
+    // var outMargins=ee.Algorithms.If(geomType.eq(0),singleMargin(layer),multiMargin(layer))
+    
+    return ee.FeatureCollection(layer).map(function(feat){
+              return ee.Feature(feat)
+                        .set(
+                          'Date',image1.properties.DATE_ACQUIRED,
+                          'Satellite',image1.properties.SPACECRAFT_ID,
+                          'Time',image1.properties.time,
+                          'ImagePath',image1.id,
+                          'pointLat',inputVars.get('lat'),
+                          'pointLon',inputVars.get('lon'),
+                          'cloudShadowFlag',cloudShadowFlag.getValue(),
+                          'otherImageFlag',otherImageFlag.getValue(),
+                          'SLCFlag',SLCFlag.getValue(),
+                          'partialPickFlag',partialPickFlag.getValue(),
+                          'notes',notes.getValue(),
+                          // 'marginLength',marginLength,
+                          // 'numVertices',vertices,
+                          // 'distPerVertex',marginLength.divide(vertices),
+                          'system:index',layerName,
+                          'system:time_start',image1.properties['system:time_start']
+                          );
+            });//.aside(print)
+   }).flatten().aside(print);
+   
+  } //end of getMarginInfo function
+  
+}     //end of visualiseImagery function
+  
+function indexOfSmallest(a) {
+ var lowest = 0;
+ for (var i = 1; i < a.length; i++) {
+  if (a[i] < a[lowest]) lowest = i;
+ }
+ return lowest;
+}
+
+
+
+
+
+
